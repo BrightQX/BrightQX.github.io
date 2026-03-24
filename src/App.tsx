@@ -932,7 +932,7 @@ function AdminSettings({ config, posts: postsProp, onSave }: { config: SiteConfi
       const res = await fetch('http://localhost:3721/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ posts, config: cfg }),
+        body: JSON.stringify({ posts: postsData, config: cfgData }),
       });
       const data = await res.json();
       if (data.ok) {
