@@ -136,6 +136,68 @@ function getAdminPassword(): string {
 function setAdminPassword(pwd: string) {
   localStorage.setItem('sakura_admin_pwd', pwd);
 }
+
+// ===== GitHub 发布配置 =====
+function getGithubToken(): string {
+  return localStorage.getItem('sakura_gh_token') || '';
+}
+function setGithubToken(token: string) {
+  localStorage.setItem('sakura_gh_token', token);
+}
+function getGithubRepo(): string {
+  return localStorage.getItem('sakura_gh_repo') || 'BrightQX/BrightQX.github.io';
+}
+function setGithubRepo(repo: string) {
+  localStorage.setItem('sakura_gh_repo', repo);
+}
+
+// 通过 GitHub API 更新单个文件
+async function githubPutFile(
+  token: string,
+  repo: string,
+  filePath: string,
+  content: string,
+  message: string
+): Promise<void> {
+  const apiBase = `https://api.github.com/repos/${repo}/contents/${filePath}`;
+  // 先获取当前文件的 SHA（更新文件时必须提供）
+  let sha: string | undefined;
+  try {
+    const getRes = await fetch(apiBase, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+      },
+    });
+    if (getRes.ok) {
+      const json = await getRes.json();
+      sha = json.sha;
+    }
+  } catch {
+    // 文件不存在时 sha 为 undefined，直接创建
+  }
+
+  // base64 编码内容
+  const encoded = btoa(unescape(encodeURIComponent(content)));
+
+  const body: Record<string, unknown> = { message, content: encoded };
+  if (sha) body.sha = sha;
+
+  const putRes = await fetch(apiBase, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!putRes.ok) {
+    const err = await putRes.json().catch(() => ({}));
+    throw new Error(err.message || `GitHub API 错误 ${putRes.status}`);
+  }
+}
 function isAuthed(): boolean {
   return sessionStorage.getItem('sakura_authed') === '1';
 }
@@ -663,11 +725,24 @@ function AdminSettings({ config, onSave }: { config: SiteConfig; onSave: (c: Sit
   const [publishStatus, setPublishStatus] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle');
   const [publishMsg, setPublishMsg] = useState('');
 
+  // GitHub 发布配置
+  const [ghToken, setGhTokenState] = useState(getGithubToken);
+  const [ghRepo, setGhRepoState] = useState(getGithubRepo);
+  const [tokenVisible, setTokenVisible] = useState(false);
+
   useEffect(() => { setForm(config); }, [config]);
 
   const set = (k: keyof SiteConfig, v: unknown) => { setForm(f => ({ ...f, [k]: v })); setDirty(true); };
 
   const handleSave = () => { onSave(form); setDirty(false); };
+
+  const handleSaveGhConfig = () => {
+    setGithubToken(ghToken.trim());
+    setGithubRepo(ghRepo.trim());
+    setPwdMsg(''); // 复用空间，用 publishMsg 提示
+    setPublishMsg('✓ 发布配置已保存');
+    setTimeout(() => setPublishMsg(''), 2500);
+  };
 
   const updateTimeline = (i: number, field: 'year' | 'event', v: string) => {
     const t = [...form.timeline];
@@ -690,16 +765,48 @@ function AdminSettings({ config, onSave }: { config: SiteConfig; onSave: (c: Sit
 
   const handlePublish = async () => {
     setPublishStatus('loading');
-    setPublishMsg('正在导出数据并推送...');
+    setPublishMsg('正在发布...');
+
+    const posts = JSON.parse(localStorage.getItem('sakura_posts') || 'null');
+    const cfg = JSON.parse(localStorage.getItem('sakura_config') || 'null');
+    const token = getGithubToken();
+    const repo = getGithubRepo();
+
+    // ── 方案 A：GitHub API 直接推送 ──
+    if (token) {
+      try {
+        const now = new Date().toLocaleString('zh-CN');
+        const commitMsg = `content: 博客内容更新 ${now}`;
+
+        if (posts) {
+          const postsContent = `import type { Post } from '@/types';\n\nexport const posts: Post[] = ${JSON.stringify(posts, null, 2)};\n`;
+          setPublishMsg('正在更新文章数据...');
+          await githubPutFile(token, repo, 'src/data/posts.ts', postsContent, commitMsg);
+        }
+
+        if (cfg) {
+          const configContent = `import type { SiteConfig } from '@/types';\n\nexport const defaultConfig: SiteConfig = ${JSON.stringify(cfg, null, 2)};\n`;
+          setPublishMsg('正在更新站点配置...');
+          await githubPutFile(token, repo, 'src/data/config.ts', configContent, commitMsg);
+        }
+
+        setPublishStatus('ok');
+        setPublishMsg('✓ 发布成功！约 2 分钟后生效');
+      } catch (err: unknown) {
+        setPublishStatus('err');
+        const msg = err instanceof Error ? err.message : String(err);
+        setPublishMsg('GitHub API 推送失败：' + msg);
+      }
+      setTimeout(() => { setPublishStatus('idle'); setPublishMsg(''); }, 6000);
+      return;
+    }
+
+    // ── 方案 B：本地发布服务（fallback）──
     try {
-      // 把当前数据通过本地 API 写入源文件并 git push
       const res = await fetch('http://localhost:3721/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          posts: JSON.parse(localStorage.getItem('sakura_posts') || 'null'),
-          config: JSON.parse(localStorage.getItem('sakura_config') || 'null'),
-        }),
+        body: JSON.stringify({ posts, config: cfg }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -711,9 +818,9 @@ function AdminSettings({ config, onSave }: { config: SiteConfig; onSave: (c: Sit
       }
     } catch {
       setPublishStatus('err');
-      setPublishMsg('无法连接发布服务，请先运行"发布服务.bat"');
+      setPublishMsg('❌ 未配置 GitHub Token，且本地发布服务未运行。请在下方填写 Token 后再试。');
     }
-    setTimeout(() => { setPublishStatus('idle'); setPublishMsg(''); }, 5000);
+    setTimeout(() => { setPublishStatus('idle'); setPublishMsg(''); }, 6000);
   };
 
   return (
@@ -809,6 +916,65 @@ function AdminSettings({ config, onSave }: { config: SiteConfig; onSave: (c: Sit
         </div>
         {pwdMsg && <div style={{ fontSize: 13, color: pwdMsg.startsWith('✓') ? 'hsl(140,50%,42%)' : 'hsl(0,60%,50%)', marginBottom: 12 }}>{pwdMsg}</div>}
         <button className="btn btn-secondary btn-sm" onClick={handleChangePwd}>修改密码</button>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-section-title">发布配置</div>
+        <div className="settings-section-desc">
+          配置后可在任何设备上直接点击「导出并发布」推送到 GitHub，无需本地服务。
+          Token 仅存储在本浏览器中，不会上传。
+          <br />
+          <a
+            href="https://github.com/settings/tokens/new?scopes=repo&description=SakuraBlog"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'hsl(345,65%,60%)', textDecoration: 'underline', fontSize: 12 }}
+          >
+            → 点此生成 GitHub Personal Access Token（需勾选 repo 权限）
+          </a>
+        </div>
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label">GitHub 仓库</label>
+            <input
+              className="form-input"
+              value={ghRepo}
+              onChange={e => setGhRepoState(e.target.value)}
+              placeholder="用户名/仓库名，如 BrightQX/BrightQX.github.io"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Personal Access Token</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                className="form-input"
+                type={tokenVisible ? 'text' : 'password'}
+                value={ghToken}
+                onChange={e => setGhTokenState(e.target.value)}
+                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                style={{ paddingRight: 64 }}
+              />
+              <button
+                onClick={() => setTokenVisible(v => !v)}
+                style={{
+                  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer', fontSize: 12,
+                  color: 'hsl(345,40%,55%)', padding: '2px 4px',
+                }}
+              >
+                {tokenVisible ? '隐藏' : '显示'}
+              </button>
+            </div>
+          </div>
+        </div>
+        <button className="btn btn-secondary btn-sm" style={{ marginTop: 4 }} onClick={handleSaveGhConfig}>
+          保存发布配置
+        </button>
+        {getGithubToken() && (
+          <div style={{ fontSize: 12, color: 'hsl(140,45%,42%)', marginTop: 8 }}>
+            ✓ 已配置 Token，点击「导出并发布」将直接推送到 GitHub
+          </div>
+        )}
       </div>
 
       <div className="settings-save-bar">
