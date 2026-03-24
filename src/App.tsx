@@ -152,30 +152,34 @@ function setGithubRepo(repo: string) {
 }
 
 // 通过 GitHub API 更新单个文件，返回 commit html_url
+// knownSha: 如果调用方已知当前 SHA，可直接传入，跳过 GET 请求
 async function githubPutFile(
   token: string,
   repo: string,
   filePath: string,
   content: string,
-  message: string
+  message: string,
+  knownSha?: string
 ): Promise<string> {
   const apiBase = `https://api.github.com/repos/${repo}/contents/${filePath}`;
 
-  // 先获取当前文件的 SHA（更新文件时必须提供）
-  let sha: string | undefined;
-  const getRes = await fetch(apiBase, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-    },
-  });
-  if (getRes.ok) {
-    const json = await getRes.json();
-    sha = json.sha;
-  } else if (getRes.status !== 404) {
-    // 404 = 文件不存在（将新建），其他状态码（401/403等）直接抛出
-    const errJson = await getRes.json().catch(() => ({}));
-    throw new Error(`获取文件失败 ${getRes.status}：${errJson.message || getRes.statusText}`);
+  // 如果没有传入已知 SHA，则先 GET 获取
+  let sha: string | undefined = knownSha;
+  if (!sha) {
+    const getRes = await fetch(apiBase, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+      },
+    });
+    if (getRes.ok) {
+      const json = await getRes.json();
+      sha = json.sha;
+    } else if (getRes.status !== 404) {
+      // 404 = 文件不存在（将新建），其他状态码（401/403等）直接抛出
+      const errJson = await getRes.json().catch(() => ({}));
+      throw new Error(`获取文件失败 ${getRes.status}：${errJson.message || getRes.statusText}`);
+    }
   }
 
   // base64 编码内容
@@ -915,15 +919,61 @@ function AdminSettings({ config, posts: postsProp, onSave }: { config: SiteConfi
         const now = new Date().toLocaleString('zh-CN');
         const commitMsg = `content: 博客内容更新 ${now}`;
 
-        // 始终推送文章数据（使用 src/data/posts.ts，前台页面从这里读取）
-        const postsContent = `import type { Post } from '@/types';\n\nexport const posts: Post[] = ${JSON.stringify(postsData, null, 2)};\n`;
-        setPublishMsg('正在更新文章数据...');
-        const commitUrl = await githubPutFile(token, repo, 'src/data/posts.ts', postsContent, commitMsg);
+        // 先获取远端 App.tsx 内容，再替换 defaultPosts / defaultConfig
+        setPublishMsg('正在获取远端文件...');
+        const apiBase = `https://api.github.com/repos/${repo}/contents/src/App.tsx`;
+        const getRes = await fetch(apiBase, {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+        });
+        if (!getRes.ok) {
+          const e = await getRes.json().catch(() => ({}));
+          throw new Error(`获取 App.tsx 失败 ${getRes.status}：${e.message || getRes.statusText}`);
+        }
+        const getJson = await getRes.json();
+        const remoteSrc = decodeURIComponent(escape(atob(getJson.content.replace(/\n/g, ''))));
 
-        // 推送站点配置（创建/更新 src/data/config.ts）
-        const configContent = `import type { SiteConfig } from '@/types';\n\nexport const siteConfig: SiteConfig = ${JSON.stringify(cfgData, null, 2)};\n`;
-        setPublishMsg('正在更新站点配置...');
-        await githubPutFile(token, repo, 'src/data/config.ts', configContent, commitMsg);
+        // 替换 defaultPosts 和 defaultConfig 数据块
+        // 策略：找到声明行的起始位置，然后用括号计数法找到对应的结束分号
+        function replaceTopLevelConst(src: string, varDecl: string, newValue: string): string {
+          const start = src.indexOf(varDecl);
+          if (start === -1) return src; // 找不到则跳过
+          // 从 '=' 之后开始，用括号/方括号计数找到顶层结束
+          const eqIdx = src.indexOf('=', start + varDecl.length);
+          if (eqIdx === -1) return src;
+          let depth = 0;
+          let i = eqIdx + 1;
+          while (i < src.length) {
+            const ch = src[i];
+            if (ch === '[' || ch === '{' || ch === '(') depth++;
+            else if (ch === ']' || ch === '}' || ch === ')') {
+              depth--;
+              if (depth === 0) { i++; break; } // 找到顶层闭合
+            }
+            i++;
+          }
+          // 跳过结尾可能的分号
+          while (i < src.length && (src[i] === ';' || src[i] === ' ')) i++;
+          return src.slice(0, start) + varDecl + ' = ' + newValue + ';\n' + src.slice(i);
+        }
+
+        let updatedSrc = replaceTopLevelConst(
+          remoteSrc,
+          'const defaultPosts: Post[]',
+          JSON.stringify(postsData, null, 2)
+        );
+        updatedSrc = replaceTopLevelConst(
+          updatedSrc,
+          'const defaultConfig: SiteConfig',
+          JSON.stringify(cfgData, null, 2)
+        );
+
+        if (updatedSrc === remoteSrc) {
+          // 内容没变化，依然强制推送一个空提交触发构建
+          setPublishMsg('内容与远端一致，触发重新部署...');
+        }
+
+        setPublishMsg('正在推送 App.tsx...');
+        const commitUrl = await githubPutFile(token, repo, 'src/App.tsx', updatedSrc, commitMsg, getJson.sha);
 
         // 主动触发 GitHub Actions workflow_dispatch
         setPublishMsg('正在触发部署...');
