@@ -67,13 +67,15 @@ export const posts: Post[] = [
     "content": "# 用 React + Vite 搭建现代前端项目\n\n从零开始搭建一个生产级的 React 项目。\n\n## 初始化项目\n\n```bash\nnpm create vite@latest my-app -- --template react-ts\ncd my-app\nnpm install\n```\n\n## 配置路径别名\n\n在 `vite.config.ts` 中配置 `@` 路径别名即可。\n\n---\n\n这套配置是我目前最顺手的 React 项目起始模板。"
   },
   {
-    "id": "1774354298833",
+    "id": "1774355658718",
     "title": "test",
     "slug": "test",
     "excerpt": "test",
     "date": "2026-03-24",
     "readTime": 5,
-    "tags": [],
+    "tags": [
+      "test"
+    ],
     "content": "test"
   }
 ];
