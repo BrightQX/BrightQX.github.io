@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation, useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -126,6 +126,24 @@ function loadConfig(): SiteConfig {
 
 function saveConfig(config: SiteConfig) {
   localStorage.setItem('sakura_config', JSON.stringify(config));
+}
+
+// ===== 密码鉴权 =====
+const DEFAULT_PASSWORD = '986080';
+function getAdminPassword(): string {
+  return localStorage.getItem('sakura_admin_pwd') || DEFAULT_PASSWORD;
+}
+function setAdminPassword(pwd: string) {
+  localStorage.setItem('sakura_admin_pwd', pwd);
+}
+function isAuthed(): boolean {
+  return sessionStorage.getItem('sakura_authed') === '1';
+}
+function setAuthed() {
+  sessionStorage.setItem('sakura_authed', '1');
+}
+function clearAuthed() {
+  sessionStorage.removeItem('sakura_authed');
 }
 
 // ===== CSS 样式 =====
@@ -289,6 +307,19 @@ const globalStyles = `
   .empty-state { text-align: center; padding: 48px 20px; color: hsl(220, 10%, 55%); }
   .empty-state-icon { font-size: 40px; margin-bottom: 12px; }
   .empty-state-text { font-size: 14px; }
+
+  /* ===== 登录页 ===== */
+  .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, hsl(345, 60%, 97%) 0%, hsl(350, 40%, 95%) 50%, hsl(20, 40%, 96%) 100%); }
+  .login-card { background: white; border-radius: 24px; padding: 40px; width: 360px; box-shadow: 0 20px 60px rgba(180, 80, 100, 0.12); border: 1px solid hsl(345, 40%, 90%); }
+  .login-logo { text-align: center; margin-bottom: 28px; }
+  .login-logo h2 { font-size: 22px; font-weight: 700; color: hsl(345, 55%, 50%); margin-bottom: 6px; }
+  .login-logo p { font-size: 13px; color: hsl(340, 15%, 55%); }
+  .login-error { background: hsl(0, 70%, 97%); color: hsl(0, 65%, 50%); border: 1px solid hsl(0, 60%, 88%); border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; }
+  .btn-publish { background: linear-gradient(135deg, hsl(140, 55%, 45%), hsl(150, 60%, 40%)); color: white; }
+  .btn-publish:hover { background: linear-gradient(135deg, hsl(140, 55%, 40%), hsl(150, 60%, 35%)); }
+  .publish-status { font-size: 12px; color: hsl(220, 10%, 55%); display: flex; align-items: center; gap: 6px; }
+  .publish-status.ok { color: hsl(140, 50%, 42%); }
+  .publish-status.err { color: hsl(0, 60%, 50%); }
 `;
 
 // ===== 樱花飘落 =====
@@ -365,6 +396,54 @@ function Toast({ msg, onDone }: { msg: string; onDone: () => void }) {
     return () => clearTimeout(t);
   }, [onDone]);
   return <div className="toast">✓ {msg}</div>;
+}
+
+// ===== 管理员登录页 =====
+function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
+  const [pwd, setPwd] = useState('');
+  const [error, setError] = useState('');
+  const [shake, setShake] = useState(false);
+
+  const handleLogin = () => {
+    if (pwd === getAdminPassword()) {
+      setAuthed();
+      onSuccess();
+    } else {
+      setError('密码错误，请重试');
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+      setPwd('');
+    }
+  };
+
+  return (
+    <div className="login-wrap">
+      <div className="login-card" style={shake ? { animation: 'shake 0.4s ease' } : {}}>
+        <style>{`@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }`}</style>
+        <div className="login-logo">
+          <div style={{ fontSize: 40, marginBottom: 8 }}>🌸</div>
+          <h2>博客控制面板</h2>
+          <p>请输入管理员密码</p>
+        </div>
+        {error && <div className="login-error">{error}</div>}
+        <div className="form-group">
+          <label className="form-label">管理员密码</label>
+          <input
+            className="form-input"
+            type="password"
+            value={pwd}
+            onChange={e => { setPwd(e.target.value); setError(''); }}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            placeholder="请输入密码"
+            autoFocus
+          />
+        </div>
+        <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }} onClick={handleLogin}>
+          进入控制面板
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ===== 标签输入 =====
@@ -579,6 +658,10 @@ function AdminPosts({ posts, onAdd, onEdit, onDelete }: {
 function AdminSettings({ config, onSave }: { config: SiteConfig; onSave: (c: SiteConfig) => void }) {
   const [form, setForm] = useState<SiteConfig>(config);
   const [dirty, setDirty] = useState(false);
+  const [pwdForm, setPwdForm] = useState({ old: '', next: '', confirm: '' });
+  const [pwdMsg, setPwdMsg] = useState('');
+  const [publishStatus, setPublishStatus] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle');
+  const [publishMsg, setPublishMsg] = useState('');
 
   useEffect(() => { setForm(config); }, [config]);
 
@@ -593,6 +676,45 @@ function AdminSettings({ config, onSave }: { config: SiteConfig; onSave: (c: Sit
   };
   const addTimeline = () => set('timeline', [...form.timeline, { year: '', event: '' }]);
   const removeTimeline = (i: number) => set('timeline', form.timeline.filter((_, idx) => idx !== i));
+
+  const handleChangePwd = () => {
+    if (!pwdForm.old || !pwdForm.next || !pwdForm.confirm) return setPwdMsg('请填写所有字段');
+    if (pwdForm.old !== getAdminPassword()) return setPwdMsg('当前密码错误');
+    if (pwdForm.next.length < 4) return setPwdMsg('新密码不能少于 4 位');
+    if (pwdForm.next !== pwdForm.confirm) return setPwdMsg('两次密码不一致');
+    setAdminPassword(pwdForm.next);
+    setPwdMsg('✓ 密码已修改');
+    setPwdForm({ old: '', next: '', confirm: '' });
+    setTimeout(() => setPwdMsg(''), 2500);
+  };
+
+  const handlePublish = async () => {
+    setPublishStatus('loading');
+    setPublishMsg('正在导出数据并推送...');
+    try {
+      // 把当前数据通过本地 API 写入源文件并 git push
+      const res = await fetch('http://localhost:3721/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          posts: JSON.parse(localStorage.getItem('sakura_posts') || 'null'),
+          config: JSON.parse(localStorage.getItem('sakura_config') || 'null'),
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setPublishStatus('ok');
+        setPublishMsg('✓ 发布成功！约 2 分钟后生效');
+      } else {
+        setPublishStatus('err');
+        setPublishMsg('发布失败：' + (data.error || '未知错误'));
+      }
+    } catch {
+      setPublishStatus('err');
+      setPublishMsg('无法连接发布服务，请先运行"发布服务.bat"');
+    }
+    setTimeout(() => { setPublishStatus('idle'); setPublishMsg(''); }, 5000);
+  };
 
   return (
     <div style={{ paddingBottom: 80 }}>
@@ -667,9 +789,39 @@ function AdminSettings({ config, onSave }: { config: SiteConfig; onSave: (c: Sit
         <button className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={addTimeline}>+ 添加时间节点</button>
       </div>
 
+      <div className="settings-section">
+        <div className="settings-section-title">安全设置</div>
+        <div className="settings-section-desc">修改控制面板登录密码</div>
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label">当前密码</label>
+            <input className="form-input" type="password" value={pwdForm.old} onChange={e => setPwdForm(f => ({ ...f, old: e.target.value }))} placeholder="输入当前密码" />
+          </div>
+          <div className="form-group" />
+          <div className="form-group">
+            <label className="form-label">新密码</label>
+            <input className="form-input" type="password" value={pwdForm.next} onChange={e => setPwdForm(f => ({ ...f, next: e.target.value }))} placeholder="至少 4 位" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">确认新密码</label>
+            <input className="form-input" type="password" value={pwdForm.confirm} onChange={e => setPwdForm(f => ({ ...f, confirm: e.target.value }))} placeholder="再次输入新密码" />
+          </div>
+        </div>
+        {pwdMsg && <div style={{ fontSize: 13, color: pwdMsg.startsWith('✓') ? 'hsl(140,50%,42%)' : 'hsl(0,60%,50%)', marginBottom: 12 }}>{pwdMsg}</div>}
+        <button className="btn btn-secondary btn-sm" onClick={handleChangePwd}>修改密码</button>
+      </div>
+
       <div className="settings-save-bar">
-        <span className="settings-save-hint">{dirty ? '有未保存的更改' : '所有设置已保存'}</span>
-        <button className="btn btn-primary" onClick={handleSave} disabled={!dirty} style={{ opacity: dirty ? 1 : 0.5 }}>保存设置</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span className="settings-save-hint">{dirty ? '有未保存的更改' : '所有设置已保存'}</span>
+          {publishMsg && <span className={`publish-status ${publishStatus === 'ok' ? 'ok' : publishStatus === 'err' ? 'err' : ''}`}>{publishMsg}</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={!dirty} style={{ opacity: dirty ? 1 : 0.5 }}>保存设置</button>
+          <button className="btn btn-publish" onClick={handlePublish} disabled={publishStatus === 'loading'}>
+            {publishStatus === 'loading' ? '发布中...' : '🚀 导出并发布'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -774,6 +926,10 @@ function Admin({ posts, config, onPostAdd, onPostEdit, onPostDelete, onConfigSav
           <button className="admin-nav-item" style={{ color: 'hsl(345, 55%, 50%)' }} onClick={() => navigate('/')}>
             <span className="admin-nav-icon">←</span>
             返回博客前台
+          </button>
+          <button className="admin-nav-item" style={{ color: 'hsl(220, 15%, 55%)', marginTop: 2 }} onClick={() => { clearAuthed(); window.location.reload(); }}>
+            <span className="admin-nav-icon">🔒</span>
+            退出登录
           </button>
         </div>
       </div>
@@ -1017,10 +1173,26 @@ function NotFound() {
   );
 }
 
+// ===== 路由守卫（admin 需要登录） =====
+function AdminRouteGuard({ authed, onAuth, children }: { authed: boolean; onAuth: () => void; children: React.ReactNode }) {
+  const [path, setPath] = useState(window.location.pathname);
+  useEffect(() => {
+    const handler = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, []);
+
+  if (path.startsWith('/admin') && !authed) {
+    return <AdminLogin onSuccess={onAuth} />;
+  }
+  return <>{children}</>;
+}
+
 // ===== 主应用 =====
 export default function App() {
   const [posts, setPosts] = useState<Post[]>(loadPosts);
   const [config, setConfig] = useState<SiteConfig>(loadConfig);
+  const [authed, setAuthed_] = useState(isAuthed);
 
   const handlePostAdd = (p: Post) => {
     const updated = [...posts, p];
@@ -1045,44 +1217,48 @@ export default function App() {
     saveConfig(c);
   };
 
+  // 判断当前是否是 admin 路由（用于路由守卫）
+
   return (
     <>
       <style>{globalStyles}</style>
       <BrowserRouter>
-        <Routes>
-          {/* 控制面板路由（独立布局，无前台 Navbar） */}
-          <Route path="/admin/*" element={
-            <Admin
-              posts={posts}
-              config={config}
-              onPostAdd={handlePostAdd}
-              onPostEdit={handlePostEdit}
-              onPostDelete={handlePostDelete}
-              onConfigSave={handleConfigSave}
-            />
-          } />
+        <AdminRouteGuard authed={authed} onAuth={() => setAuthed_(true)}>
+          <Routes>
+            {/* 控制面板路由（独立布局，无前台 Navbar） */}
+            <Route path="/admin/*" element={
+              <Admin
+                posts={posts}
+                config={config}
+                onPostAdd={handlePostAdd}
+                onPostEdit={handlePostEdit}
+                onPostDelete={handlePostDelete}
+                onConfigSave={handleConfigSave}
+              />
+            } />
 
-          {/* 博客前台路由 */}
-          <Route path="/*" element={
-            <>
-              <SakuraPetals />
-              <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-                <Navbar config={config} />
-                <div style={{ flex: 1 }}>
-                  <Routes>
-                    <Route path="/" element={<Home posts={posts} config={config} />} />
-                    <Route path="/post/:slug" element={<PostDetail posts={posts} />} />
-                    <Route path="/tags" element={<Tags posts={posts} />} />
-                    <Route path="/tags/:tag" element={<TagDetail posts={posts} />} />
-                    <Route path="/about" element={<AboutPage config={config} />} />
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
+            {/* 博客前台路由 */}
+            <Route path="/*" element={
+              <>
+                <SakuraPetals />
+                <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+                  <Navbar config={config} />
+                  <div style={{ flex: 1 }}>
+                    <Routes>
+                      <Route path="/" element={<Home posts={posts} config={config} />} />
+                      <Route path="/post/:slug" element={<PostDetail posts={posts} />} />
+                      <Route path="/tags" element={<Tags posts={posts} />} />
+                      <Route path="/tags/:tag" element={<TagDetail posts={posts} />} />
+                      <Route path="/about" element={<AboutPage config={config} />} />
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                  </div>
+                  <Footer config={config} />
                 </div>
-                <Footer config={config} />
-              </div>
-            </>
-          } />
-        </Routes>
+              </>
+            } />
+          </Routes>
+        </AdminRouteGuard>
       </BrowserRouter>
     </>
   );
