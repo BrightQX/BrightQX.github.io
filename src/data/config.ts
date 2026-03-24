@@ -1,6 +1,6 @@
 import type { SiteConfig } from '@/types';
 
-export const defaultConfig: SiteConfig = {
+export const siteConfig: SiteConfig = {
   "blogName": "🌸 浅汐博客",
   "blogSlogan": "如花开落，文字自有其来去",
   "heroTitle": "欢迎来到浅汐奴役AI做出来的樱花博客",
