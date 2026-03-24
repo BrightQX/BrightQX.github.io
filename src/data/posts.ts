@@ -1,6 +1,7 @@
 import type { Post } from '@/types';
 
-export const posts: Post[] = [
+// 种子数据（构建时写入，作为默认值）
+const seedPosts: Post[] = [
   {
     id: '1',
     title: '开始我的写作之旅',
@@ -244,3 +245,17 @@ src/
 `,
   },
 ];
+
+// 优先使用 localStorage 中的数据（控制面板修改后存入），否则使用种子数据
+function loadPosts(): Post[] {
+  try {
+    const raw = localStorage.getItem('sakura_posts');
+    if (raw) return JSON.parse(raw) as Post[];
+  } catch {
+    // ignore
+  }
+  return seedPosts;
+}
+
+export const posts: Post[] = loadPosts();
+
