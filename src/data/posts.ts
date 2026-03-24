@@ -3,7 +3,7 @@ import type { Post } from '@/types';
 export const posts: Post[] = [
   {
     "id": "1",
-    "title": "开始我的AI写作之旅",
+    "title": "开始我的写作之旅",
     "slug": "start-my-writing-journey",
     "excerpt": "一直以来，我都想把自己的所思所想记录下来。今天，终于迈出了这一步——建了这个博客，开始认真写作。",
     "date": "2026-03-20",
