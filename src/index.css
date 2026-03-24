@@ -1,0 +1,259 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* 樱花主题色调 - 浅粉白 */
+    --background: 350 30% 98%;
+    --foreground: 340 20% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 340 20% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 340 20% 15%;
+    /* 主色：樱花粉 */
+    --primary: 345 65% 65%;
+    --primary-foreground: 0 0% 100%;
+    /* 次色：浅粉 */
+    --secondary: 345 30% 93%;
+    --secondary-foreground: 345 40% 40%;
+    --muted: 345 20% 95%;
+    --muted-foreground: 340 15% 50%;
+    --accent: 345 40% 90%;
+    --accent-foreground: 345 50% 35%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 345 25% 88%;
+    --input: 345 25% 88%;
+    --ring: 345 65% 65%;
+    --radius: 0.75rem;
+    --sidebar-background: 350 30% 97%;
+    --sidebar-foreground: 340 15% 35%;
+    --sidebar-primary: 345 65% 65%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 345 30% 92%;
+    --sidebar-accent-foreground: 345 40% 40%;
+    --sidebar-border: 345 20% 88%;
+    --sidebar-ring: 345 65% 65%;
+  }
+
+  .dark {
+    --background: 340 15% 10%;
+    --foreground: 345 20% 92%;
+    --card: 340 15% 13%;
+    --card-foreground: 345 20% 92%;
+    --popover: 340 15% 13%;
+    --popover-foreground: 345 20% 92%;
+    --primary: 345 55% 68%;
+    --primary-foreground: 340 15% 10%;
+    --secondary: 340 15% 18%;
+    --secondary-foreground: 345 20% 85%;
+    --muted: 340 12% 18%;
+    --muted-foreground: 340 10% 55%;
+    --accent: 340 15% 20%;
+    --accent-foreground: 345 20% 85%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 340 12% 22%;
+    --input: 340 12% 22%;
+    --ring: 345 55% 68%;
+    --sidebar-background: 340 15% 12%;
+    --sidebar-foreground: 340 10% 75%;
+    --sidebar-primary: 345 55% 68%;
+    --sidebar-primary-foreground: 340 15% 10%;
+    --sidebar-accent: 340 12% 18%;
+    --sidebar-accent-foreground: 345 20% 85%;
+    --sidebar-border: 340 12% 22%;
+    --sidebar-ring: 345 55% 68%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Georgia', 'Noto Serif SC', -apple-system, BlinkMacSystemFont,
+      'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', serif;
+  }
+}
+
+/* ===== 樱花飘落动画 ===== */
+@keyframes sakura-fall {
+  0% {
+    transform: translateY(-20px) rotate(0deg) translateX(0);
+    opacity: 0.9;
+  }
+  25% {
+    transform: translateY(25vh) rotate(45deg) translateX(20px);
+  }
+  50% {
+    transform: translateY(50vh) rotate(90deg) translateX(-10px);
+  }
+  75% {
+    transform: translateY(75vh) rotate(135deg) translateX(15px);
+  }
+  100% {
+    transform: translateY(105vh) rotate(180deg) translateX(-5px);
+    opacity: 0;
+  }
+}
+
+@keyframes sway {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(12px); }
+}
+
+.sakura-petal {
+  position: fixed;
+  pointer-events: none;
+  z-index: 0;
+  animation: sakura-fall linear infinite;
+}
+
+/* ===== Markdown prose styles ===== */
+.prose {
+  @apply text-foreground leading-relaxed;
+}
+
+.prose h1 {
+  @apply text-3xl font-bold mt-8 mb-4 text-foreground;
+}
+
+.prose h2 {
+  @apply text-2xl font-semibold mt-8 mb-3 text-foreground pb-2;
+  border-bottom: 2px solid hsl(var(--primary) / 0.3);
+}
+
+.prose h3 {
+  @apply text-xl font-semibold mt-6 mb-2 text-foreground;
+}
+
+.prose p {
+  @apply mb-4 text-muted-foreground leading-7;
+}
+
+.prose a {
+  @apply text-primary underline underline-offset-4 hover:opacity-80;
+}
+
+.prose strong {
+  @apply font-semibold text-foreground;
+}
+
+.prose em {
+  @apply italic;
+}
+
+.prose blockquote {
+  border-left: 3px solid hsl(var(--primary) / 0.6);
+  @apply pl-4 py-1 my-4 text-muted-foreground italic rounded-r;
+  background: hsl(var(--primary) / 0.05);
+}
+
+.prose ul {
+  @apply list-disc list-inside mb-4 space-y-1 text-muted-foreground;
+}
+
+.prose ol {
+  @apply list-decimal list-inside mb-4 space-y-1 text-muted-foreground;
+}
+
+.prose li {
+  @apply leading-7;
+}
+
+.prose pre {
+  @apply bg-muted rounded-xl p-4 my-4 overflow-x-auto text-sm;
+}
+
+.prose code {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  @apply px-1.5 py-0.5 rounded text-sm font-mono;
+}
+
+.prose pre code {
+  @apply bg-transparent p-0 text-foreground;
+  color: inherit;
+}
+
+.prose table {
+  @apply w-full border-collapse my-4;
+}
+
+.prose th {
+  background: hsl(var(--primary) / 0.1);
+  @apply px-4 py-2 text-left font-semibold border border-border;
+}
+
+.prose td {
+  @apply px-4 py-2 border border-border text-muted-foreground;
+}
+
+.prose img {
+  @apply rounded-xl my-4 max-w-full;
+}
+
+.prose hr {
+  @apply border-border my-8;
+  border-color: hsl(var(--primary) / 0.3);
+}
+
+/* ===== 自定义滚动条 ===== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.3);
+  @apply rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.5);
+}
+
+/* ===== 文章卡片悬停效果 ===== */
+.post-card {
+  transition: all 0.25s ease;
+}
+
+.post-card:hover {
+  transform: translateY(-2px);
+}
+
+/* ===== 樱花标签样式 ===== */
+.sakura-tag {
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+  border: 1px solid hsl(var(--primary) / 0.25);
+  transition: all 0.2s ease;
+}
+
+.sakura-tag:hover {
+  background: hsl(var(--primary) / 0.22);
+  border-color: hsl(var(--primary) / 0.5);
+}
+
+/* ===== Hero 渐变背景 ===== */
+.hero-gradient {
+  background: linear-gradient(
+    135deg,
+    hsl(345 60% 97%) 0%,
+    hsl(350 40% 95%) 50%,
+    hsl(20 40% 96%) 100%
+  );
+}
+
+.dark .hero-gradient {
+  background: linear-gradient(
+    135deg,
+    hsl(340 15% 12%) 0%,
+    hsl(345 12% 14%) 50%,
+    hsl(340 10% 13%) 100%
+  );
+}
