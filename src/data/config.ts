@@ -1,11 +1,11 @@
 import type { SiteConfig } from '@/types';
 
 export const siteConfig: SiteConfig = {
-  "blogName": "🌸 樱花博客",
+  "blogName": "🌸 浅汐博客",
   "blogSlogan": "如花开落，文字自有其来去",
   "heroTitle": "欢迎来到樱花博客",
   "heroSubtitle": "记录技术探索、生活感悟与读书思考。\n如花开落，文字自有其来去。",
-  "authorName": "你好，我是博主",
+  "authorName": "你好，我是浅汐",
   "authorRole": "开发者 · 写作者 · 思考者",
   "authorBio": "欢迎来到我的博客！这里是我记录技术学习、生活感悟和读书思考的地方。我相信写作是最好的学习方式——把脑子里模糊的想法变成清晰的文字，这个过程本身就是一种理解的加深。",
   "authorEmail": "hello@sakura-blog.com",
