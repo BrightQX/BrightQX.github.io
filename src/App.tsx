@@ -790,6 +790,25 @@ function AdminSettings({ config, onSave }: { config: SiteConfig; onSave: (c: Sit
           await githubPutFile(token, repo, 'src/data/config.ts', configContent, commitMsg);
         }
 
+        // 主动触发 GitHub Actions workflow_dispatch
+        setPublishMsg('正在触发部署...');
+        const dispatchRes = await fetch(
+          `https://api.github.com/repos/${repo}/actions/workflows/deploy.yml/dispatches`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ref: 'main' }),
+          }
+        );
+        // 204 = 成功，422 = 已有 push 触发了（也正常）
+        if (!dispatchRes.ok && dispatchRes.status !== 422) {
+          console.warn('[publish] workflow dispatch 返回:', dispatchRes.status);
+        }
+
         setPublishStatus('ok');
         setPublishMsg('✓ 发布成功！约 2 分钟后生效');
       } catch (err: unknown) {
