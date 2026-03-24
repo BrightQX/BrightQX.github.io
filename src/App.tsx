@@ -382,6 +382,114 @@ const globalStyles = `
   .publish-status { font-size: 12px; color: hsl(220, 10%, 55%); display: flex; align-items: center; gap: 6px; }
   .publish-status.ok { color: hsl(140, 50%, 42%); }
   .publish-status.err { color: hsl(0, 60%, 50%); }
+  .admin-mobile-only { display: none; }
+
+  /* ===== 响应式：平板 (≤768px) ===== */
+  @media (max-width: 768px) {
+    /* 导航 */
+    .nav-inner { padding: 0 16px; height: 52px; }
+    .nav-logo { font-size: 15px; }
+    .nav-links { gap: 2px; }
+    .nav-link { padding: 5px 10px; font-size: 13px; }
+    .nav-admin-btn { display: none; }
+
+    /* 前台主区域 */
+    .main { padding: 24px 16px; }
+    .hero { padding: 28px 20px; margin-bottom: 32px; border-radius: 16px; }
+    .hero h1 { font-size: 24px; }
+    .hero p { font-size: 14px; }
+
+    /* 文章卡片 */
+    .post-card { padding: 18px 16px; border-radius: 14px; }
+    .post-title { font-size: 16px; }
+
+    /* 关于页 */
+    .about-hero { flex-direction: column; align-items: flex-start; gap: 16px; padding: 24px 20px; }
+
+    /* prose 文章页 */
+    .prose h1 { font-size: 22px; }
+    .prose h2 { font-size: 18px; }
+    .prose h3 { font-size: 16px; }
+    .prose pre { padding: 14px; font-size: 12px; border-radius: 10px; }
+    .prose table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* 控制面板 */
+    .admin-layout { flex-direction: column; }
+    .admin-sidebar {
+      width: 100%;
+      flex-direction: row;
+      border-right: none;
+      border-bottom: 1px solid hsl(220, 15%, 91%);
+      overflow-x: auto;
+    }
+    .admin-sidebar-logo { display: none; }
+    .admin-nav {
+      display: flex;
+      flex-direction: row;
+      padding: 8px;
+      flex: 1;
+      overflow-x: auto;
+      gap: 4px;
+    }
+    .admin-nav-item {
+      flex-shrink: 0;
+      padding: 7px 12px;
+      margin-bottom: 0;
+      white-space: nowrap;
+    }
+    .admin-sidebar-footer { display: none; }
+    .admin-mobile-only { display: inline-flex !important; }
+    .admin-header { padding: 0 16px; height: 52px; }
+    .admin-body { padding: 16px; }
+
+    /* 统计卡片 */
+    .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+
+    /* 表单 */
+    .form-grid { grid-template-columns: 1fr; }
+    .form-group.full { grid-column: 1; }
+
+    /* 设置保存栏 */
+    .settings-save-bar {
+      padding: 12px 16px;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .settings-save-bar > div:last-child { width: 100%; justify-content: flex-end; }
+
+    /* 模态框 */
+    .modal { max-width: 100%; border-radius: 16px; max-height: 95vh; }
+    .modal-body { padding: 16px; }
+    .modal-header { padding: 16px 16px 12px; }
+    .modal-footer { padding: 12px 16px; }
+
+    /* 文章管理表格 → 卡片式 */
+    table.post-table thead { display: none; }
+    table.post-table, table.post-table tbody, table.post-table tr, table.post-table td { display: block; width: 100%; }
+    table.post-table tr { border: 1px solid hsl(220, 15%, 91%); border-radius: 12px; margin-bottom: 10px; padding: 12px 14px; background: white; }
+    table.post-table td { border: none; padding: 3px 0; font-size: 13px; }
+    table.post-table tr:last-child td { border-bottom: none; }
+    .table-post-title { max-width: 100%; white-space: normal; font-size: 14px; font-weight: 600; }
+    .actions { margin-top: 8px; }
+
+    /* 登录页 */
+    .login-card { width: calc(100% - 32px); padding: 28px 20px; }
+  }
+
+  /* ===== 响应式：手机 (≤480px) ===== */
+  @media (max-width: 480px) {
+    .hero h1 { font-size: 20px; }
+    .hero { padding: 20px 16px; }
+    .stat-grid { grid-template-columns: 1fr; }
+    .nav-link { padding: 4px 8px; font-size: 12px; }
+    .post-card { padding: 14px 14px; }
+    .page-title { font-size: 22px; }
+    .back-btn { margin-bottom: 20px; }
+    .admin-body { padding: 12px; }
+    .settings-section { padding: 16px; }
+    .btn-publish { width: 100%; justify-content: center; }
+  }
 `;
 
 // ===== 樱花飘落 =====
@@ -1122,8 +1230,11 @@ function Admin({ posts, config, onPostAdd, onPostEdit, onPostDelete, onConfigSav
       <div className="admin-content">
         <div className="admin-header">
           <h1>{activeLabel}</h1>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <a href="/" target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">预览博客</a>
+            {/* 手机端才显示：返回前台 & 退出登录 */}
+            <button className="btn btn-secondary btn-sm admin-mobile-only" onClick={() => navigate('/')}>← 前台</button>
+            <button className="btn btn-secondary btn-sm admin-mobile-only" style={{ color: 'hsl(0,55%,52%)' }} onClick={() => { clearAuthed(); window.location.reload(); }}>退出</button>
           </div>
         </div>
         <div className="admin-body">
