@@ -151,30 +151,31 @@ function setGithubRepo(repo: string) {
   localStorage.setItem('sakura_gh_repo', repo);
 }
 
-// 通过 GitHub API 更新单个文件
+// 通过 GitHub API 更新单个文件，返回 commit html_url
 async function githubPutFile(
   token: string,
   repo: string,
   filePath: string,
   content: string,
   message: string
-): Promise<void> {
+): Promise<string> {
   const apiBase = `https://api.github.com/repos/${repo}/contents/${filePath}`;
+
   // 先获取当前文件的 SHA（更新文件时必须提供）
   let sha: string | undefined;
-  try {
-    const getRes = await fetch(apiBase, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-      },
-    });
-    if (getRes.ok) {
-      const json = await getRes.json();
-      sha = json.sha;
-    }
-  } catch {
-    // 文件不存在时 sha 为 undefined，直接创建
+  const getRes = await fetch(apiBase, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+    },
+  });
+  if (getRes.ok) {
+    const json = await getRes.json();
+    sha = json.sha;
+  } else if (getRes.status !== 404) {
+    // 404 = 文件不存在（将新建），其他状态码（401/403等）直接抛出
+    const errJson = await getRes.json().catch(() => ({}));
+    throw new Error(`获取文件失败 ${getRes.status}：${errJson.message || getRes.statusText}`);
   }
 
   // base64 编码内容
@@ -195,8 +196,11 @@ async function githubPutFile(
 
   if (!putRes.ok) {
     const err = await putRes.json().catch(() => ({}));
-    throw new Error(err.message || `GitHub API 错误 ${putRes.status}`);
+    throw new Error(`推送失败 ${putRes.status}：${err.message || putRes.statusText}`);
   }
+
+  const result = await putRes.json();
+  return result?.commit?.html_url || '';
 }
 function isAuthed(): boolean {
   return sessionStorage.getItem('sakura_authed') === '1';
@@ -837,10 +841,34 @@ function AdminSettings({ config, posts: postsProp, onSave }: { config: SiteConfi
   const [ghToken, setGhTokenState] = useState(getGithubToken);
   const [ghRepo, setGhRepoState] = useState(getGithubRepo);
   const [tokenVisible, setTokenVisible] = useState(false);
+  const [testMsg, setTestMsg] = useState('');
 
   useEffect(() => { setForm(config); }, [config]);
 
   const set = (k: keyof SiteConfig, v: unknown) => { setForm(f => ({ ...f, [k]: v })); setDirty(true); };
+
+  // 测试 Token 是否有效
+  const handleTestToken = async () => {
+    const t = ghToken.trim();
+    const r = ghRepo.trim();
+    if (!t) { setTestMsg('⚠ 请先输入 Token'); return; }
+    setTestMsg('正在验证...');
+    try {
+      const res = await fetch(`https://api.github.com/repos/${r}`, {
+        headers: { Authorization: `Bearer ${t}`, Accept: 'application/vnd.github+json' },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setTestMsg(`✓ Token 有效，仓库：${json.full_name}（${json.private ? '私有' : '公开'}）`);
+      } else {
+        const json = await res.json().catch(() => ({}));
+        setTestMsg(`✗ 验证失败 ${res.status}：${json.message || res.statusText}`);
+      }
+    } catch (e) {
+      setTestMsg('✗ 网络错误：' + String(e));
+    }
+    setTimeout(() => setTestMsg(''), 8000);
+  };
 
   const handleSave = () => { onSave(form); setDirty(false); };
 
@@ -890,7 +918,7 @@ function AdminSettings({ config, posts: postsProp, onSave }: { config: SiteConfi
         // 始终推送文章数据（使用 src/data/posts.ts，前台页面从这里读取）
         const postsContent = `import type { Post } from '@/types';\n\nexport const posts: Post[] = ${JSON.stringify(postsData, null, 2)};\n`;
         setPublishMsg('正在更新文章数据...');
-        await githubPutFile(token, repo, 'src/data/posts.ts', postsContent, commitMsg);
+        const commitUrl = await githubPutFile(token, repo, 'src/data/posts.ts', postsContent, commitMsg);
 
         // 推送站点配置（创建/更新 src/data/config.ts）
         const configContent = `import type { SiteConfig } from '@/types';\n\nexport const siteConfig: SiteConfig = ${JSON.stringify(cfgData, null, 2)};\n`;
@@ -911,19 +939,20 @@ function AdminSettings({ config, posts: postsProp, onSave }: { config: SiteConfi
             body: JSON.stringify({ ref: 'main' }),
           }
         );
-        // 204 = 成功，422 = 已有 push 触发了（也正常）
         if (!dispatchRes.ok && dispatchRes.status !== 422) {
           console.warn('[publish] workflow dispatch 返回:', dispatchRes.status);
         }
 
         setPublishStatus('ok');
-        setPublishMsg('✓ 发布成功！约 2 分钟后生效');
+        setPublishMsg(commitUrl
+          ? `✓ 已推送！查看 commit → ${commitUrl}`
+          : '✓ 发布成功！约 2 分钟后生效');
       } catch (err: unknown) {
         setPublishStatus('err');
         const msg = err instanceof Error ? err.message : String(err);
-        setPublishMsg('GitHub API 推送失败：' + msg);
+        setPublishMsg('✗ 推送失败：' + msg);
       }
-      setTimeout(() => { setPublishStatus('idle'); setPublishMsg(''); }, 6000);
+      setTimeout(() => { setPublishStatus('idle'); setPublishMsg(''); }, 12000);
       return;
     }
 
@@ -1096,7 +1125,15 @@ function AdminSettings({ config, posts: postsProp, onSave }: { config: SiteConfi
         <button className="btn btn-secondary btn-sm" style={{ marginTop: 4 }} onClick={handleSaveGhConfig}>
           保存发布配置
         </button>
-        {getGithubToken() && (
+        <button className="btn btn-secondary btn-sm" style={{ marginTop: 4, marginLeft: 8 }} onClick={handleTestToken}>
+          测试连接
+        </button>
+        {testMsg && (
+          <div style={{ fontSize: 12, marginTop: 8, color: testMsg.startsWith('✓') ? 'hsl(140,45%,42%)' : testMsg.startsWith('✗') ? 'hsl(0,60%,50%)' : 'hsl(340,20%,45%)' }}>
+            {testMsg}
+          </div>
+        )}
+        {!testMsg && getGithubToken() && (
           <div style={{ fontSize: 12, color: 'hsl(140,45%,42%)', marginTop: 8 }}>
             ✓ 已配置 Token，点击「导出并发布」将直接推送到 GitHub
           </div>
