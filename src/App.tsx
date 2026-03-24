@@ -825,7 +825,7 @@ function AdminPosts({ posts, onAdd, onEdit, onDelete }: {
 }
 
 // ===== 管理面板 - 站点设置 =====
-function AdminSettings({ config, onSave }: { config: SiteConfig; onSave: (c: SiteConfig) => void }) {
+function AdminSettings({ config, posts: postsProp, onSave }: { config: SiteConfig; posts: Post[]; onSave: (c: SiteConfig) => void }) {
   const [form, setForm] = useState<SiteConfig>(config);
   const [dirty, setDirty] = useState(false);
   const [pwdForm, setPwdForm] = useState({ old: '', next: '', confirm: '' });
@@ -875,8 +875,9 @@ function AdminSettings({ config, onSave }: { config: SiteConfig; onSave: (c: Sit
     setPublishStatus('loading');
     setPublishMsg('正在发布...');
 
-    const posts = JSON.parse(localStorage.getItem('sakura_posts') || 'null');
-    const cfg = JSON.parse(localStorage.getItem('sakura_config') || 'null');
+    // 优先用 localStorage 中的数据（用户已修改过），否则用当前 props 数据作为兜底
+    const postsData: Post[] = JSON.parse(localStorage.getItem('sakura_posts') || 'null') ?? postsProp;
+    const cfgData: SiteConfig = JSON.parse(localStorage.getItem('sakura_config') || 'null') ?? config;
     const token = getGithubToken();
     const repo = getGithubRepo();
 
@@ -886,17 +887,15 @@ function AdminSettings({ config, onSave }: { config: SiteConfig; onSave: (c: Sit
         const now = new Date().toLocaleString('zh-CN');
         const commitMsg = `content: 博客内容更新 ${now}`;
 
-        if (posts) {
-          const postsContent = `import type { Post } from '@/types';\n\nexport const posts: Post[] = ${JSON.stringify(posts, null, 2)};\n`;
-          setPublishMsg('正在更新文章数据...');
-          await githubPutFile(token, repo, 'src/data/posts.ts', postsContent, commitMsg);
-        }
+        // 始终推送文章数据（使用 src/data/posts.ts，前台页面从这里读取）
+        const postsContent = `import type { Post } from '@/types';\n\nexport const posts: Post[] = ${JSON.stringify(postsData, null, 2)};\n`;
+        setPublishMsg('正在更新文章数据...');
+        await githubPutFile(token, repo, 'src/data/posts.ts', postsContent, commitMsg);
 
-        if (cfg) {
-          const configContent = `import type { SiteConfig } from '@/types';\n\nexport const defaultConfig: SiteConfig = ${JSON.stringify(cfg, null, 2)};\n`;
-          setPublishMsg('正在更新站点配置...');
-          await githubPutFile(token, repo, 'src/data/config.ts', configContent, commitMsg);
-        }
+        // 推送站点配置（创建/更新 src/data/config.ts）
+        const configContent = `import type { SiteConfig } from '@/types';\n\nexport const siteConfig: SiteConfig = ${JSON.stringify(cfgData, null, 2)};\n`;
+        setPublishMsg('正在更新站点配置...');
+        await githubPutFile(token, repo, 'src/data/config.ts', configContent, commitMsg);
 
         // 主动触发 GitHub Actions workflow_dispatch
         setPublishMsg('正在触发部署...');
@@ -1241,7 +1240,7 @@ function Admin({ posts, config, onPostAdd, onPostEdit, onPostDelete, onConfigSav
           <Routes>
             <Route path="/" element={<AdminOverview posts={posts} config={config} />} />
             <Route path="/posts" element={<AdminPosts posts={posts} onAdd={handlePostAdd} onEdit={handlePostEdit} onDelete={handlePostDelete} />} />
-            <Route path="/settings" element={<AdminSettings config={config} onSave={handleConfigSave} />} />
+            <Route path="/settings" element={<AdminSettings config={config} posts={posts} onSave={handleConfigSave} />} />
           </Routes>
         </div>
       </div>
